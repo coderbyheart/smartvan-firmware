@@ -1,0 +1,14 @@
+menu "SmartVan"
+
+config APP_VERSION
+	string "The application version"
+	default "0.0.0-development"
+
+endmenu # SmartVan
+
+menu "Zephyr Kernel"
+source "$ZEPHYR_BASE/Kconfig.zephyr"
+endmenu
+
+module = smartvan
+module-str = SmartVan: Monitor a Camper Van

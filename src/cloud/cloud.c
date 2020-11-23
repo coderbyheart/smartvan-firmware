@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <net/aws_iot.h>
 
+#include "ble.h"
+
 #define MIN_VALID_TS 1500000000000
 
 static int json_add_obj(cJSON *parent, const char *str, cJSON *object)
@@ -109,6 +111,10 @@ int cloud_report_state(
 	if (trackReported->publishVersion) {
 		err += json_add_str(reported_obj, "app_version", CONFIG_APP_VERSION);
 	}
+
+	// FIXME: track these
+	err += json_add_number(reported_obj, "inside", inside.temperature);
+	err += json_add_number(reported_obj, "outside", outside.temperature);
 
 	err += json_add_obj(state_obj, "reported", reported_obj);
 

@@ -1,15 +1,16 @@
-/*
- * Copyright (c) 2019 Nordic Semiconductor ASA
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 / {
-	dht22 {
-		compatible = "aosong,dht";
-		status = "okay";
-		label = "DHT22";
-		dio-gpios = <&gpio0 18 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
-		dht22;
+	chosen {
+		zephyr,bt-uart=&uart2;
 	};
+};
+
+&uart2 {
+	compatible = "nordic,nrf-uarte";
+	current-speed = <1000000>;
+	status = "okay";
+	tx-pin = <18>;
+	rx-pin = <17>;
+	rts-pin = <21>;
+	cts-pin = <19>;
+	hw-flow-control;
 };

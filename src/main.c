@@ -17,6 +17,7 @@
 #include <modem/at_cmd.h>
 
 #include "cloud.h"
+#include "ble.h"
 
 static struct k_delayed_work report_state_work;
 
@@ -39,7 +40,8 @@ bool isConnected = false;
 
 static bool needsPublish() {
 	if (trackReported.publishVersion) return true;
-	return false;
+	return true; // Fixme: check temp changes
+	// return false;
 }
 
 static void report_state_work_fn(struct k_work *work)
@@ -284,6 +286,8 @@ void main(void) {
 	printf("AWS IoT broker hostname:   %s\n", CONFIG_AWS_IOT_BROKER_HOST_NAME);
 	printf("Publish min interval:      %d seconds\n", CONFIG_PUBLISH_INTERVAL_MINUTES * 60);
 	printf("##########################################################################################\n");
+
+	beacons_init();
 
 	cJSON_Init();
 

@@ -2,7 +2,7 @@
 
 This implements an application that
 
-- monitors internal and external temperature using BLE beacon thermometers
+- monitors internal and external temperature using BLE beacon thermometers (Blue Coin T) using the onboard nRF52840
 - publishes sensor readings to AWS IoT
 
 ## Building

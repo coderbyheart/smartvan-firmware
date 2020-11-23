@@ -6,7 +6,7 @@ config APP_VERSION
 
 config PUBLISH_INTERVAL_MINUTES
 	int "Cloud publish interval in minutes"
-	default 1
+	default 15
 
 endmenu # SmartVan
 

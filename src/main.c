@@ -19,11 +19,8 @@
 #include "cloud.h"
 
 static struct k_delayed_work report_state_work;
-static struct k_delayed_work connstat_work;
 
 K_SEM_DEFINE(lte_connected, 0, 1);
-
-uint16_t cloudPublishIntervalSeconds = 60; // TODO: Make configurable
 
 static struct desired_state desiredCfg = { 
 };
@@ -39,8 +36,6 @@ static struct track_desired trackDesired = {
 };
 
 bool isConnected = false;
-
-static uint8_t connStatBuffer[64];
 
 static bool needsPublish() {
 	if (trackReported.publishVersion) return true;
@@ -62,7 +57,7 @@ static void report_state_work_fn(struct k_work *work)
 	}
 
 	// Schedule next publication
-	k_delayed_work_submit(&report_state_work, K_SECONDS(cloudPublishIntervalSeconds));
+	k_delayed_work_submit(&report_state_work, K_SECONDS(CONFIG_PUBLISH_INTERVAL_MINUTES * 60));
 }
 
 void aws_iot_event_handler(const struct aws_iot_evt *const evt)
@@ -275,20 +270,9 @@ static int query_modem(const char *cmd, char *buf, size_t buf_len)
 	return 0;
 }
 
-static void connstat_work_fn(struct k_work *work)
-{
-	query_modem("AT%XCONNSTAT?", connStatBuffer, sizeof(connStatBuffer));
-	// NOTE: k_uptime_get_32() cannot hold a system uptime time larger than approximately 50 days
-	printk("Connection stats: %s | Uptime: %d seconds\n", connStatBuffer, k_uptime_get_32() / 1000);
-	// Schedule next run
-	k_delayed_work_submit(&connstat_work, K_SECONDS(60));
-}
-
 static void work_init(void)
 {
 	k_delayed_work_init(&report_state_work, report_state_work_fn);
-	k_delayed_work_init(&connstat_work, connstat_work_fn);
-	k_delayed_work_submit(&connstat_work, K_SECONDS(60));
 }
 
 void main(void) {
@@ -298,17 +282,12 @@ void main(void) {
 	printf("Version:                   %s\n", CONFIG_APP_VERSION);
 	printf("AWS IoT Client ID:         %s\n", CONFIG_AWS_IOT_CLIENT_ID_STATIC);
 	printf("AWS IoT broker hostname:   %s\n", CONFIG_AWS_IOT_BROKER_HOST_NAME);
-	printf("Publish min interval:      %d seconds\n", cloudPublishIntervalSeconds);
+	printf("Publish min interval:      %d seconds\n", CONFIG_PUBLISH_INTERVAL_MINUTES * 60);
 	printf("##########################################################################################\n");
 
 	cJSON_Init();
 
 	bsd_lib_modem_dfu_handler();
-
-	err = at_cmd_write("AT%XCONNSTAT=1", NULL, 0, NULL);
-	if (err != 0) {
-		printk("Could not enable connection statistics, error: %d\n", err);
-	}
 
 	work_init();
 

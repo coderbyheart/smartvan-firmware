@@ -4,6 +4,10 @@ config APP_VERSION
 	string "The application version"
 	default "0.0.0-development"
 
+config PUBLISH_INTERVAL_MINUTES
+	int "Cloud publish interval in minutes"
+	default 1
+
 endmenu # SmartVan
 
 menu "Zephyr Kernel"

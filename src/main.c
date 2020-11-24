@@ -1,6 +1,5 @@
 #include <zephyr.h>
 #include <device.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <cJSON.h>
 #include <cJSON_os.h>
@@ -33,12 +32,11 @@ static struct current_state currentState = {
 
 static struct track_reported trackReported = {
 	.publishVersion = true,
-	.inside = -127,
-	.outside = -127,
+	.inside = -127.0,
+	.outside = -127.0,
 };
 
 bool isConnected = false;
-int64_t lastFullPublish = 0;
 
 static bool needsPublish() {
 	if (trackReported.publishVersion) return true;
@@ -57,21 +55,18 @@ static void report_state_work_fn(struct k_work *work)
 		return;
 	}
 
-	bool publishFullUpdate = (k_uptime_get() - lastFullPublish) > (CONFIG_PUBLISH_FULL_INTERVAL_MINUTES * 60 * 1000);
-
-	if (!needsPublish() && !publishFullUpdate) {
+	if (!needsPublish()) {
 		printk("No updates to report.\n");
 		return;
 	}
 
-	dk_set_led(DK_LED2, true);
-	int err = cloud_report_state(&currentState, &trackReported, publishFullUpdate);
+	dk_set_led(DK_LED3, true);
+	int err = cloud_report_state(&currentState, &trackReported);
 	if (err) {
 		printk("cloud_report_state, error: %d\n", err);
 		return;
 	}
-	lastFullPublish = k_uptime_get();
-	dk_set_led(DK_LED2, false);
+	dk_set_led(DK_LED3, false);
 }
 
 void aws_iot_event_handler(const struct aws_iot_evt *const evt)
@@ -85,7 +80,7 @@ void aws_iot_event_handler(const struct aws_iot_evt *const evt)
 	case AWS_IOT_EVT_CONNECTED:
 		printf("Connected to AWS IoT.\n");
 		isConnected = true;
-		dk_set_led(DK_LED3, true);
+		dk_set_led(DK_LED4, true);
 
 		if (evt->data.persistent_session) {
 			printk("Persistent session enabled\n");
@@ -112,7 +107,7 @@ void aws_iot_event_handler(const struct aws_iot_evt *const evt)
 		printf("Disconnected from AWS IoT.\n");
 		k_delayed_work_cancel(&report_state_work);
 		isConnected = false;
-		dk_set_led(DK_LED3, false);
+		dk_set_led(DK_LED4, false);
 		break;
 	case AWS_IOT_EVT_DATA_RECEIVED:
 		printk("AWS_IOT_EVT_DATA_RECEIVED\n");
@@ -254,7 +249,6 @@ void main(void) {
 	printf(" AWS IoT Client ID:         %s\n", CONFIG_AWS_IOT_CLIENT_ID_STATIC);
 	printf(" AWS IoT broker hostname:   %s\n", CONFIG_AWS_IOT_BROKER_HOST_NAME);
 	printf(" Publish changes every:     %d minutes\n", CONFIG_PUBLISH_CHANGES_INTERVAL_MINUTES);
-	printf(" Publish full update every: %d minutes\n", CONFIG_PUBLISH_FULL_INTERVAL_MINUTES);
 	printf(" BLE Scan Interval:         %d minutes\n", CONFIG_BLE_SCAN_DURATION_MINUTES);
 	printf(" BLE Scan Pause:            %d minutes\n", CONFIG_BLE_SCAN_PAUSE_MINUTES);
 	printf(" Temperature threshold:     %f celsius\n", TEMPERATURE_THRESHOLD_CELSIUS);

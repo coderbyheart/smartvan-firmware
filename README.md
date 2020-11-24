@@ -7,8 +7,10 @@ This implements an application that
 
 ## LED schema
 
-- LED 3: connected to cloud
-- LED 4: BLE scanning active
+- LED 1: Inside temperature up to date
+- LED 2: Outside temperature up to date
+- LED 3: sending data to cloud
+- LED 4: connected to cloud
 
 ## Building
 

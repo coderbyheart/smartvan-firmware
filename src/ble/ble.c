@@ -14,8 +14,8 @@
 
 #include "ble.h"
 
-struct sensor_data inside = { .name = "", .temperature = -127.0, .fresh = false };
-struct sensor_data outside = { .name = "", .temperature = -127.0, .fresh = false };
+struct sensor_data inside = { .name = "", .temperature = -127.0, .fresh = false, .rssi = -140 };
+struct sensor_data outside = { .name = "", .temperature = -127.0, .fresh = false, .rssi = -140 };
 
 uint16_t scanDurationSeconds = CONFIG_BLE_SCAN_DURATION_MINUTES * 60;
 uint16_t scanPauseSeconds = CONFIG_BLE_SCAN_PAUSE_MINUTES * 60;
@@ -50,12 +50,16 @@ static void scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t adv_type,
 	bt_addr_le_to_str(addr, le_addr, sizeof(le_addr));
 	if (strcmp(le_addr, "f0:49:04:8f:16:e5 (random)") == 0) {
 		bt_data_parse(ad, adv_data_found, &outside);
+		outside.rssi = rssi;
 		printf("<BLE> %s (%ddBm) %f\n", outside.name,
 		       rssi, outside.temperature);
+		dk_set_led(DK_LED2, true);
 	} else if (strcmp(le_addr, "d6:6f:5e:2f:a3:81 (random)") == 0) {
 		bt_data_parse(ad, adv_data_found, &inside);
+		inside.rssi = rssi;
 		printf("<BLE> %s (%ddBm) %f\n", inside.name,
 		       rssi, inside.temperature );
+		dk_set_led(DK_LED1, true);
 	}
 
 	if (inside.fresh && outside.fresh) {
@@ -68,7 +72,11 @@ static void scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t adv_type,
 static void scan_start(void)
 {
 	inside.fresh = false;
+	inside.rssi = -140;
 	outside.fresh = false;
+	outside.rssi = -140;
+	dk_set_led(DK_LED1, false);
+	dk_set_led(DK_LED2, false);
 
 	struct bt_le_scan_param scan_param = {
 		.type = BT_HCI_LE_SCAN_PASSIVE,
@@ -82,7 +90,6 @@ static void scan_start(void)
 		printk("<BLE> Starting scanning failed (err %d)\n", err);
 		return;
 	}
-	dk_set_led(DK_LED4, true);
 }
 
 static void ble_ready(int err)
@@ -105,7 +112,6 @@ static void scan_stop(void)
 		printk("<BLE> Stopping scanning failed (err %d)\n", err);
 		return;
 	}
-	dk_set_led(DK_LED4, false);
 }
 
 static void disable_scan_work_fn(struct k_work *work)

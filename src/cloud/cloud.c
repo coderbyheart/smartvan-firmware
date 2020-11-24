@@ -8,8 +8,6 @@
 
 #include "ble.h"
 
-#define FLOAT_LEN 30
-
 static int json_add_obj(cJSON *parent, const char *str, cJSON *object)
 {
 	cJSON_AddItemToObject(parent, str, object);
@@ -87,8 +85,7 @@ exit:
 
 int cloud_report_state(
 	struct current_state *currentState, 
-	struct track_reported *trackReported,
-	bool publishFullUpdate)
+	struct track_reported *trackReported)
 {
 	int err;
 	char *message;
@@ -112,15 +109,13 @@ int cloud_report_state(
 	if (trackReported->publishVersion) {
 		err += json_add_str(reported_obj, "app_version", CONFIG_APP_VERSION);
 	}
-	if (publishFullUpdate || fabs(inside.temperature - trackReported->inside) > TEMPERATURE_THRESHOLD_CELSIUS) {
-		char inside_str[FLOAT_LEN];
-		snprintf(inside_str, FLOAT_LEN, "%.*f", 2, inside.temperature);
-		err += json_add_str(reported_obj, "inside", inside_str);
+	if (fabs(inside.temperature - trackReported->inside) > TEMPERATURE_THRESHOLD_CELSIUS) {
+		err += json_add_number(reported_obj, "inside", inside.temperature);
+		err += json_add_number(reported_obj, "inside_rssi", inside.rssi);
 	}
-	if (publishFullUpdate || fabs(outside.temperature - trackReported->outside) > TEMPERATURE_THRESHOLD_CELSIUS) {
-		char outside_str[FLOAT_LEN];
-		snprintf(outside_str, FLOAT_LEN, "%.*f", 2, outside.temperature);
-		err += json_add_str(reported_obj, "outside", outside_str);
+	if (fabs(outside.temperature - trackReported->outside) > TEMPERATURE_THRESHOLD_CELSIUS) {
+		err += json_add_number(reported_obj, "outside", outside.temperature);
+		err += json_add_number(reported_obj, "outside_rssi", outside.rssi);
 	}
 
 	err += json_add_obj(state_obj, "reported", reported_obj);

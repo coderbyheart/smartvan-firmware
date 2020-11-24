@@ -7,6 +7,7 @@ struct sensor_data {
 	float temperature;
 	char name[NAME_LEN];
 	bool fresh;
+	int rssi;
 };
 
 extern struct sensor_data inside;

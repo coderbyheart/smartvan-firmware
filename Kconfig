@@ -8,10 +8,6 @@ config PUBLISH_CHANGES_INTERVAL_MINUTES
 	int "How often to publish changed values in minutes"
 	default 5
 
-config PUBLISH_FULL_INTERVAL_MINUTES
-	int "Publish a full update to cloud at least this often"
-	default 60
-
 config TEMPERATURE_THRESHOLD_CENTICELSIUS
 	int "Threshold for temperature to change before reporting it in centicelsius"
 	default 1

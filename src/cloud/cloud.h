@@ -26,8 +26,7 @@ struct track_reported {
 int cloud_decode_response(char *input, struct desired_state *cfg);
 int cloud_report_state(
 	struct current_state *currentState, 
-	struct track_reported *trackReported,
-	bool publishFullUpdate);
+	struct track_reported *trackReported);
 
 #ifdef __cplusplus
 }

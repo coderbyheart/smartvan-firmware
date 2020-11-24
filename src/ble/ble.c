@@ -10,6 +10,8 @@
 #include <bluetooth/scan.h>
 #include <bluetooth/hci.h>
 
+#include <dk_buttons_and_leds.h>
+
 #include "ble.h"
 
 struct sensor_data inside = { .name = "", .temperature = -127.0, .fresh = false };
@@ -80,6 +82,7 @@ static void scan_start(void)
 		printk("<BLE> Starting scanning failed (err %d)\n", err);
 		return;
 	}
+	dk_set_led(DK_LED4, true);
 }
 
 static void ble_ready(int err)
@@ -102,6 +105,7 @@ static void scan_stop(void)
 		printk("<BLE> Stopping scanning failed (err %d)\n", err);
 		return;
 	}
+	dk_set_led(DK_LED4, false);
 }
 
 static void disable_scan_work_fn(struct k_work *work)

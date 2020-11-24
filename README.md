@@ -5,6 +5,11 @@ This implements an application that
 - monitors internal and external temperature using BLE beacon thermometers (Blue Coin T) using the onboard nRF52840
 - publishes sensor readings to AWS IoT
 
+## LED schema
+
+- LED 3: connected to cloud
+- LED 4: BLE scanning active
+
 ## Building
 
 ### Prepare the Docker image with all build dependencies

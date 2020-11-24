@@ -16,6 +16,7 @@
 #include <bsd.h>
 #include <modem/at_cmd.h>
 #include <math.h>
+#include <dk_buttons_and_leds.h>
 
 #include "cloud.h"
 #include "ble.h"
@@ -63,12 +64,14 @@ static void report_state_work_fn(struct k_work *work)
 		return;
 	}
 
+	dk_set_led(DK_LED2, true);
 	int err = cloud_report_state(&currentState, &trackReported, publishFullUpdate);
 	if (err) {
 		printk("cloud_report_state, error: %d\n", err);
 		return;
 	}
 	lastFullPublish = k_uptime_get();
+	dk_set_led(DK_LED2, false);
 }
 
 void aws_iot_event_handler(const struct aws_iot_evt *const evt)
@@ -82,6 +85,7 @@ void aws_iot_event_handler(const struct aws_iot_evt *const evt)
 	case AWS_IOT_EVT_CONNECTED:
 		printf("Connected to AWS IoT.\n");
 		isConnected = true;
+		dk_set_led(DK_LED3, true);
 
 		if (evt->data.persistent_session) {
 			printk("Persistent session enabled\n");
@@ -108,6 +112,7 @@ void aws_iot_event_handler(const struct aws_iot_evt *const evt)
 		printf("Disconnected from AWS IoT.\n");
 		k_delayed_work_cancel(&report_state_work);
 		isConnected = false;
+		dk_set_led(DK_LED3, false);
 		break;
 	case AWS_IOT_EVT_DATA_RECEIVED:
 		printk("AWS_IOT_EVT_DATA_RECEIVED\n");
@@ -203,17 +208,7 @@ static void modem_configure(void)
 	}
 }
 
-static void at_configure(void)
-{
-	int err;
-
-	err = at_notif_init();
-	__ASSERT(err == 0, "AT Notify could not be initialized.");
-	err = at_cmd_init();
-	__ASSERT(err == 0, "AT CMD could not be established.");
-}
-
-static void bsd_lib_modem_dfu_handler(void)
+static int bsd_lib_modem_dfu_handler(void)
 {
 	int err;
 
@@ -239,7 +234,11 @@ static void bsd_lib_modem_dfu_handler(void)
 		break;
 	}
 
-	at_configure();
+	err = at_notif_init();
+	__ASSERT(err == 0, "AT Notify could not be initialized.");
+	err = at_cmd_init();
+	__ASSERT(err == 0, "AT CMD could not be established.");
+	return err;
 }
 
 static void work_init(void)
@@ -261,21 +260,34 @@ void main(void) {
 	printf(" Temperature threshold:     %f celsius\n", TEMPERATURE_THRESHOLD_CELSIUS);
 	printf("##########################################################################################\n");
 
+	err = dk_leds_init();
+	if (err) {
+		printf("ledError, error: %d", err);
+		return;
+	}
+
 	beacons_init();
 
 	cJSON_Init();
 
-	bsd_lib_modem_dfu_handler();
-
-	work_init();
-
-	int awsErr = aws_iot_init(NULL, aws_iot_event_handler);
-	if (awsErr) {
-		printk("AWS IoT library could not be initialized, error: %d\n", awsErr);
+	err = bsd_lib_modem_dfu_handler();
+	if (err) {
+		printk("DFU handler could not be initialized, error: %d\n", err);
 		return;
 	}
 
-	modem_configure();
+	work_init();
+
+	err = aws_iot_init(NULL, aws_iot_event_handler);
+	if (err) {
+		printk("AWS IoT library could not be initialized, error: %d\n", err);
+		return;
+	}
+
+	err = lte_lc_init_and_connect_async(lte_handler);
+	if (err) {
+		printk("Modem could not be configured, error: %d\n", err);
+	}
 
 	printk("Initializing modem ...\n");
 	err = modem_info_init();

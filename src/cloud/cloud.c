@@ -4,10 +4,11 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <net/aws_iot.h>
+#include <math.h>
 
 #include "ble.h"
 
-#define MIN_VALID_TS 1500000000000
+#define FLOAT_LEN 30
 
 static int json_add_obj(cJSON *parent, const char *str, cJSON *object)
 {
@@ -68,11 +69,11 @@ int cloud_decode_response(char *input, struct desired_state *cfg)
 
 	string = cJSON_Print(root_obj);
 	if (string == NULL) {
-		printk("Failed to print message.");
+		printk("<CLOUD> Failed to print message.");
 		goto exit;
 	}
 
-	printk("Decoded message: %s\n", string);
+	printk("<CLOUD> Decoded message: %s\n", string);
 
 	state_obj = json_object_decode(root_obj, "state");
 	if (state_obj == NULL) {
@@ -87,7 +88,7 @@ exit:
 int cloud_report_state(
 	struct current_state *currentState, 
 	struct track_reported *trackReported,
-	struct track_desired *trackDesired)
+	bool publishFullUpdate)
 {
 	int err;
 	char *message;
@@ -111,23 +112,29 @@ int cloud_report_state(
 	if (trackReported->publishVersion) {
 		err += json_add_str(reported_obj, "app_version", CONFIG_APP_VERSION);
 	}
-
-	// FIXME: track these
-	err += json_add_number(reported_obj, "inside", inside.temperature);
-	err += json_add_number(reported_obj, "outside", outside.temperature);
+	if (publishFullUpdate || fabs(inside.temperature - trackReported->inside) > TEMPERATURE_THRESHOLD_CELSIUS) {
+		char inside_str[FLOAT_LEN];
+		snprintf(inside_str, FLOAT_LEN, "%.*f", 2, inside.temperature);
+		err += json_add_str(reported_obj, "inside", inside_str);
+	}
+	if (publishFullUpdate || fabs(outside.temperature - trackReported->outside) > TEMPERATURE_THRESHOLD_CELSIUS) {
+		char outside_str[FLOAT_LEN];
+		snprintf(outside_str, FLOAT_LEN, "%.*f", 2, outside.temperature);
+		err += json_add_str(reported_obj, "outside", outside_str);
+	}
 
 	err += json_add_obj(state_obj, "reported", reported_obj);
 
 	err += json_add_obj(root_obj, "state", state_obj);
 
 	if (err < 0) {
-		printk("json_add, error: %d\n", err);
+		printk("<CLOUD> json_add, error: %d\n", err);
 		goto cleanup;
 	}
 
 	message = cJSON_Print(root_obj);
 	if (message == NULL) {
-		printk("cJSON_Print, error: returned NULL\n");
+		printk("<CLOUD> cJSON_Print, error: returned NULL\n");
 		err = -ENOMEM;
 		goto cleanup;
 	}
@@ -139,13 +146,15 @@ int cloud_report_state(
 		.len = strlen(message)
 	};
 
-	printk("Publishing: %s to AWS IoT broker\n", message);
+	printk("<CLOUD> Publishing: %s to AWS IoT broker\n", message);
 
 	err = aws_iot_send(&tx_data);
 	if (err) {
-		printk("aws_iot_send, error: %d\n", err);
+		printk("<CLOUD> aws_iot_send, error: %d\n", err);
 	} else {
 		trackReported->publishVersion = false;
+		trackReported->inside = inside.temperature;
+		trackReported->outside = outside.temperature;
 	}
 
 	k_free(message);

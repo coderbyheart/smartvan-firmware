@@ -9,6 +9,8 @@
 extern "C" {
 #endif
 
+#define TEMPERATURE_THRESHOLD_CELSIUS CONFIG_TEMPERATURE_THRESHOLD_CENTICELSIUS / (float)10
+
 struct current_state {
 };
 
@@ -17,17 +19,15 @@ struct desired_state {
 
 struct track_reported {
 	bool publishVersion; // Simple one time check for reported version
-};
-
-struct track_desired {
-	bool overrideThreshold; // Simple switch whether to override the desired property
+	double inside;
+	double outside;
 };
 
 int cloud_decode_response(char *input, struct desired_state *cfg);
 int cloud_report_state(
 	struct current_state *currentState, 
 	struct track_reported *trackReported,
-	struct track_desired *trackDesired);
+	bool publishFullUpdate);
 
 #ifdef __cplusplus
 }

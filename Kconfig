@@ -4,9 +4,25 @@ config APP_VERSION
 	string "The application version"
 	default "0.0.0-development"
 
-config PUBLISH_INTERVAL_MINUTES
-	int "Cloud publish interval in minutes"
-	default 15
+config PUBLISH_CHANGES_INTERVAL_MINUTES
+	int "How often to publish changed values in minutes"
+	default 5
+
+config PUBLISH_FULL_INTERVAL_MINUTES
+	int "Publish a full update to cloud at least this often"
+	default 60
+
+config TEMPERATURE_THRESHOLD_CENTICELSIUS
+	int "Threshold for temperature to change before reporting it in centicelsius"
+	default 1
+
+config BLE_SCAN_DURATION_MINUTES
+	int "Time in seconds for the device to scan for BLE beacon messages"
+	default 1
+
+config BLE_SCAN_PAUSE_MINUTES
+	int "Time in seconds to wait between scans"
+	default 5
 
 endmenu # SmartVan
 

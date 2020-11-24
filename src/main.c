@@ -15,6 +15,7 @@
 #include <modem/modem_info.h>
 #include <bsd.h>
 #include <modem/at_cmd.h>
+#include <math.h>
 
 #include "cloud.h"
 #include "ble.h"
@@ -30,36 +31,44 @@ static struct current_state currentState = {
 };
 
 static struct track_reported trackReported = {
-	.publishVersion = true
-};
-
-static struct track_desired trackDesired = {
+	.publishVersion = true,
+	.inside = -127,
+	.outside = -127,
 };
 
 bool isConnected = false;
+int64_t lastFullPublish = 0;
 
 static bool needsPublish() {
 	if (trackReported.publishVersion) return true;
-	return true; // Fixme: check temp changes
-	// return false;
+	if (fabs(inside.temperature - trackReported.inside) > TEMPERATURE_THRESHOLD_CELSIUS) return true;
+	if (fabs(outside.temperature - trackReported.outside) > TEMPERATURE_THRESHOLD_CELSIUS) return true;
+	return false;
 }
 
 static void report_state_work_fn(struct k_work *work)
 {
-	if (!needsPublish()) {
-		printk("No updates to report.\n");
-	} else if(!isConnected) {
+	// Schedule next publication
+	k_delayed_work_submit(&report_state_work, K_SECONDS(CONFIG_PUBLISH_CHANGES_INTERVAL_MINUTES * 60));
+
+	if(!isConnected) {
 		printk("Not connected to AWS IoT.\n");
-	} else {
-		int err;
-		err = cloud_report_state(&currentState, &trackReported, &trackDesired);
-		if (err) {
-			printk("cloud_report_state, error: %d\n", err);
-		}
+		return;
 	}
 
-	// Schedule next publication
-	k_delayed_work_submit(&report_state_work, K_SECONDS(CONFIG_PUBLISH_INTERVAL_MINUTES * 60));
+	bool publishFullUpdate = (k_uptime_get() - lastFullPublish) > (CONFIG_PUBLISH_FULL_INTERVAL_MINUTES * 60 * 1000);
+
+	if (!needsPublish() && !publishFullUpdate) {
+		printk("No updates to report.\n");
+		return;
+	}
+
+	int err = cloud_report_state(&currentState, &trackReported, publishFullUpdate);
+	if (err) {
+		printk("cloud_report_state, error: %d\n", err);
+		return;
+	}
+	lastFullPublish = k_uptime_get();
 }
 
 void aws_iot_event_handler(const struct aws_iot_evt *const evt)
@@ -233,45 +242,6 @@ static void bsd_lib_modem_dfu_handler(void)
 	at_configure();
 }
 
-static int remove_whitespace(char *buf)
-{
-	size_t i, j = 0, len;
-
-	len = strlen(buf);
-	for (i = 0; i < len; i++) {
-		if (buf[i] >= 32 && buf[i] <= 126) {
-			if (j != i) {
-				buf[j] = buf[i];
-			}
-
-			j++;
-		}
-	}
-
-	if (j < len) {
-		buf[j] = '\0';
-	}
-
-	return 0;
-}
-
-static int query_modem(const char *cmd, char *buf, size_t buf_len)
-{
-	int ret;
-	enum at_cmd_state at_state;
-
-	ret = at_cmd_write(cmd, buf, buf_len, &at_state);
-	if (ret) {
-		printk("at_cmd_write [%s] error:%d, at_state: %d\n",
-			cmd, ret, at_state);
-		strncpy(buf, "error", buf_len);
-		return ret;
-	}
-
-	remove_whitespace(buf);
-	return 0;
-}
-
 static void work_init(void)
 {
 	k_delayed_work_init(&report_state_work, report_state_work_fn);
@@ -281,10 +251,14 @@ void main(void) {
 	int err;
 
 	printf("##########################################################################################\n");
-	printf("Version:                   %s\n", CONFIG_APP_VERSION);
-	printf("AWS IoT Client ID:         %s\n", CONFIG_AWS_IOT_CLIENT_ID_STATIC);
-	printf("AWS IoT broker hostname:   %s\n", CONFIG_AWS_IOT_BROKER_HOST_NAME);
-	printf("Publish min interval:      %d seconds\n", CONFIG_PUBLISH_INTERVAL_MINUTES * 60);
+	printf(" Version:                   %s\n", CONFIG_APP_VERSION);
+	printf(" AWS IoT Client ID:         %s\n", CONFIG_AWS_IOT_CLIENT_ID_STATIC);
+	printf(" AWS IoT broker hostname:   %s\n", CONFIG_AWS_IOT_BROKER_HOST_NAME);
+	printf(" Publish changes every:     %d minutes\n", CONFIG_PUBLISH_CHANGES_INTERVAL_MINUTES);
+	printf(" Publish full update every: %d minutes\n", CONFIG_PUBLISH_FULL_INTERVAL_MINUTES);
+	printf(" BLE Scan Interval:         %d minutes\n", CONFIG_BLE_SCAN_DURATION_MINUTES);
+	printf(" BLE Scan Pause:            %d minutes\n", CONFIG_BLE_SCAN_PAUSE_MINUTES);
+	printf(" Temperature threshold:     %f celsius\n", TEMPERATURE_THRESHOLD_CELSIUS);
 	printf("##########################################################################################\n");
 
 	beacons_init();

@@ -15,8 +15,8 @@
 struct sensor_data inside = { .name = "", .temperature = -127.0, .fresh = false };
 struct sensor_data outside = { .name = "", .temperature = -127.0, .fresh = false };
 
-uint16_t scanDurationSeconds = 60;
-uint16_t scanPauseSeconds = 60;
+uint16_t scanDurationSeconds = CONFIG_BLE_SCAN_DURATION_MINUTES * 60;
+uint16_t scanPauseSeconds = CONFIG_BLE_SCAN_PAUSE_MINUTES * 60;
 static struct k_delayed_work enable_scan_work;
 static struct k_delayed_work disable_scan_work;
 
@@ -48,16 +48,16 @@ static void scan_cb(const bt_addr_le_t *addr, int8_t rssi, uint8_t adv_type,
 	bt_addr_le_to_str(addr, le_addr, sizeof(le_addr));
 	if (strcmp(le_addr, "f0:49:04:8f:16:e5 (random)") == 0) {
 		bt_data_parse(ad, adv_data_found, &outside);
-		printf("%s (%ddBm) %f\n", outside.name,
+		printf("<BLE> %s (%ddBm) %f\n", outside.name,
 		       rssi, outside.temperature);
 	} else if (strcmp(le_addr, "d6:6f:5e:2f:a3:81 (random)") == 0) {
 		bt_data_parse(ad, adv_data_found, &inside);
-		printf("%s (%ddBm) %f\n", inside.name,
+		printf("<BLE> %s (%ddBm) %f\n", inside.name,
 		       rssi, inside.temperature );
 	}
 
 	if (inside.fresh && outside.fresh) {
-		printf("Inside (%f) and Outside (%f) fresh!\n", inside.temperature, outside.temperature);
+		printf("<BLE> Inside (%f) and Outside (%f) updated!\n", inside.temperature, outside.temperature);
 		k_delayed_work_cancel(&disable_scan_work);
 		k_delayed_work_submit(&disable_scan_work, K_NO_WAIT);
 	}
@@ -77,20 +77,20 @@ static void scan_start(void)
 
 	int err = bt_le_scan_start(&scan_param, scan_cb);
 	if (err) {
-		printk("Starting scanning failed (err %d)\n", err);
+		printk("<BLE> Starting scanning failed (err %d)\n", err);
 		return;
 	}
 }
 
 static void ble_ready(int err)
 {
-	printk("Bluetooth initialized.\n");
+	printk("<BLE> Bluetooth initialized.\n");
 	k_delayed_work_submit(&enable_scan_work, K_NO_WAIT);
 }
 
 static void enable_scan_work_fn(struct k_work *work)
 {
-	printk("Scanning for %d seconds...\n", scanDurationSeconds);
+	printk("<BLE> Scanning for %d seconds...\n", scanDurationSeconds);
 	scan_start();
 	k_delayed_work_submit(&disable_scan_work, K_SECONDS(scanDurationSeconds));
 }
@@ -99,14 +99,14 @@ static void scan_stop(void)
 {
 	int err = bt_le_scan_stop();
 	if (err) {
-		printk("Stopping scanning failed (err %d)\n", err);
+		printk("<BLE> Stopping scanning failed (err %d)\n", err);
 		return;
 	}
 }
 
 static void disable_scan_work_fn(struct k_work *work)
 {
-	printk("Disabling scanning for %d seconds...\n", scanPauseSeconds);
+	printk("<BLE> Disabling scanning for %d seconds...\n", scanPauseSeconds);
 	scan_stop();
 	k_delayed_work_submit(&enable_scan_work, K_SECONDS(scanPauseSeconds));
 }
@@ -120,10 +120,10 @@ static void work_init(void)
 void beacons_init()
 {
 	work_init();
-	printk("Initializing Bluetooth..\n");
+	printk("<BLE> Initializing...\n");
 	int err = bt_enable(ble_ready);
 	if (err) {
-		printk("Bluetooth init failed (err %d)\n", err);
+		printk("<BLE> Init failed (err %d)\n", err);
 		return;
 	}
 }

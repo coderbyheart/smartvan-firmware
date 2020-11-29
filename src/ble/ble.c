@@ -25,6 +25,7 @@ static struct k_delayed_work disable_scan_work;
 static bool adv_data_found(struct bt_data *data, void *user_data)
 {
 	struct sensor_data *sensorData = user_data;
+	int16_t t;
 	
 	switch (data->type) {
 	case BT_DATA_NAME_SHORTENED:
@@ -34,7 +35,11 @@ static bool adv_data_found(struct bt_data *data, void *user_data)
 		       MIN(data->data_len, sizeof(sensorData->name) - 1));
 		return true;
 	case BT_DATA_SVC_DATA16:
-		sensorData->temperature = ((data->data[3] << 8) | data->data[2]) / 100.0;
+		t = ((data->data[3] << 8) | data->data[2]);
+		if (t > 128000) {
+			t = t - 65535;
+		}
+		sensorData->temperature = t / 100.0;
 		sensorData->fresh = true;
 		return true;
 	default:

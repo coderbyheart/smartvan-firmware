@@ -21,9 +21,12 @@
 #include "ble.h"
 
 static struct k_delayed_work report_state_work;
+static struct k_delayed_work leds_update_work;
+
+/* Interval in milliseconds between each time status LEDs are updated. */
+#define LEDS_UPDATE_INTERVAL K_MSEC(500)
 
 K_SEM_DEFINE(lte_connected, 0, 1);
-
 static struct desired_state desiredCfg = { 
 };
 
@@ -80,7 +83,6 @@ void aws_iot_event_handler(const struct aws_iot_evt *const evt)
 	case AWS_IOT_EVT_CONNECTED:
 		printf("Connected to AWS IoT.\n");
 		isConnected = true;
-		dk_set_led(DK_LED4, true);
 
 		if (evt->data.persistent_session) {
 			printk("Persistent session enabled\n");
@@ -107,7 +109,6 @@ void aws_iot_event_handler(const struct aws_iot_evt *const evt)
 		printf("Disconnected from AWS IoT.\n");
 		k_delayed_work_cancel(&report_state_work);
 		isConnected = false;
-		dk_set_led(DK_LED4, false);
 		break;
 	case AWS_IOT_EVT_DATA_RECEIVED:
 		printk("AWS_IOT_EVT_DATA_RECEIVED\n");
@@ -236,9 +237,24 @@ static int bsd_lib_modem_dfu_handler(void)
 	return err;
 }
 
+/**@brief Update LEDs state. */
+static void leds_update(struct k_work *work)
+{
+	static bool led_on;
+	if (!isConnected) {
+		dk_set_led(DK_LED4, false);
+	} else {
+		led_on = !led_on;
+		dk_set_led(DK_LED4, led_on);
+	}
+	k_delayed_work_submit(&leds_update_work, LEDS_UPDATE_INTERVAL);
+}
+
 static void work_init(void)
 {
 	k_delayed_work_init(&report_state_work, report_state_work_fn);
+	k_delayed_work_init(&leds_update_work, leds_update);
+	k_delayed_work_submit(&leds_update_work, LEDS_UPDATE_INTERVAL);
 }
 
 void main(void) {

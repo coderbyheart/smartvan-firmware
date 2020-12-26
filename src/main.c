@@ -22,9 +22,13 @@
 
 static struct k_delayed_work report_state_work;
 static struct k_delayed_work leds_update_work;
+static struct k_delayed_work connect_work;
 
 /* Interval in milliseconds between each time status LEDs are updated. */
 #define LEDS_UPDATE_INTERVAL K_MSEC(500)
+
+/* Interval in seconds between reconnect attempts */
+#define RECONNECT_INTERVAL K_SECONDS(CONFIG_PUBLISH_CHANGES_INTERVAL_MINUTES * 60)
 
 K_SEM_DEFINE(lte_connected, 0, 1);
 static struct desired_state desiredCfg = { 
@@ -51,7 +55,7 @@ static bool needsPublish() {
 static void report_state_work_fn(struct k_work *work)
 {
 	// Schedule next publication
-	k_delayed_work_submit(&report_state_work, K_SECONDS(CONFIG_PUBLISH_CHANGES_INTERVAL_MINUTES * 60));
+	k_delayed_work_submit(&report_state_work, RECONNECT_INTERVAL);
 
 	if(!isConnected) {
 		printk("Not connected to AWS IoT.\n");
@@ -78,14 +82,15 @@ void aws_iot_event_handler(const struct aws_iot_evt *const evt)
 
 	switch (evt->type) {
 	case AWS_IOT_EVT_CONNECTING:
-		printf("Connecting to AWS IoT...\n");
+		printf("<CLOUD> Connecting to AWS IoT...\n");
 		break;
 	case AWS_IOT_EVT_CONNECTED:
-		printf("Connected to AWS IoT.\n");
+		printf("<CLOUD> Connected to AWS IoT.\n");
 		isConnected = true;
+		k_delayed_work_cancel(&connect_work);
 
 		if (evt->data.persistent_session) {
-			printk("Persistent session enabled\n");
+			printk("<CLOUD> Persistent session enabled\n");
 		}
 
 		/** Successfully connected to AWS IoT broker, mark image as
@@ -95,60 +100,62 @@ void aws_iot_event_handler(const struct aws_iot_evt *const evt)
 
 		err = lte_lc_psm_req(true);
 		if (err) {
-			printk("Requesting PSM failed, error: %d\n", err);
+			printk("<CLOUD> Requesting PSM failed, error: %d\n", err);
 		}
 		break;
 	case AWS_IOT_EVT_READY:
-		printf("Subscribed to all topics.\n");
+		printf("<CLOUD> Subscribed to all topics.\n");
 		/** Send version number to AWS IoT broker to verify that the
 		 *  FOTA update worked.
 		 */
 		k_delayed_work_submit(&report_state_work, K_NO_WAIT);
 		break;
 	case AWS_IOT_EVT_DISCONNECTED:
-		printf("Disconnected from AWS IoT.\n");
+		printf("<CLOUD> Disconnected from AWS IoT.\n");
 		k_delayed_work_cancel(&report_state_work);
 		isConnected = false;
+		// Trigger a reconnect
+		k_delayed_work_submit(&connect_work, RECONNECT_INTERVAL);
 		break;
 	case AWS_IOT_EVT_DATA_RECEIVED:
-		printk("AWS_IOT_EVT_DATA_RECEIVED\n");
+		printk("<CLOUD> AWS_IOT_EVT_DATA_RECEIVED\n");
 		err = cloud_decode_response(evt->data.msg.ptr, &desiredCfg);
 		if (err) {
 			printk("Could not decode response %d", err);
 		}
 		break;
 	case AWS_IOT_EVT_FOTA_START:
-		printk("AWS_IOT_EVT_FOTA_START\n");
+		printk("<CLOUD> AWS_IOT_EVT_FOTA_START\n");
 		break;
 	case AWS_IOT_EVT_FOTA_ERASE_PENDING:
-		printk("AWS_IOT_EVT_FOTA_ERASE_PENDING\n");
-		printk("Disconnect LTE link or reboot\n");
+		printk("<CLOUD> AWS_IOT_EVT_FOTA_ERASE_PENDING\n");
+		printk("<CLOUD> Disconnect LTE link or reboot\n");
 		err = lte_lc_offline();
 		if (err) {
-			printk("Error disconnecting from LTE\n");
+			printk("<CLOUD> Error disconnecting from LTE\n");
 		}
 		break;
 	case AWS_IOT_EVT_FOTA_ERASE_DONE:
-		printk("AWS_FOTA_EVT_ERASE_DONE\n");
-		printk("Reconnecting the LTE link");
+		printk("<CLOUD> AWS_FOTA_EVT_ERASE_DONE\n");
+		printk("<CLOUD> Reconnecting the LTE link");
 		err = lte_lc_connect();
 		if (err) {
-			printk("Error connecting to LTE\n");
+			printk("<CLOUD> Error connecting to LTE\n");
 		}
 		break;
 	case AWS_IOT_EVT_FOTA_DONE:
-		printk("AWS_IOT_EVT_FOTA_DONE\n");
-		printk("FOTA done, rebooting device\n");
+		printk("<CLOUD> AWS_IOT_EVT_FOTA_DONE\n");
+		printk("<CLOUD> FOTA done, rebooting device\n");
 		aws_iot_disconnect();
 		sys_reboot(0);
 		break;
 	case AWS_IOT_EVT_FOTA_DL_PROGRESS:
-		printk("AWS_IOT_EVT_FOTA_DL_PROGRESS, (%d%%)", evt->data.fota_progress);
+		printk("<CLOUD> AWS_IOT_EVT_FOTA_DL_PROGRESS, (%d%%)", evt->data.fota_progress);
 	case AWS_IOT_EVT_ERROR:
-		printk("AWS_IOT_EVT_ERROR, %d\n", evt->data.err);
+		printk("<CLOUD> AWS_IOT_EVT_ERROR, %d\n", evt->data.err);
 		break;
 	default:
-		printk("Unknown AWS IoT event type: %d\n", evt->type);
+		printk("<CLOUD> Unknown AWS IoT event type: %d\n", evt->type);
 		break;
 	}
 }
@@ -250,11 +257,22 @@ static void leds_update(struct k_work *work)
 	k_delayed_work_submit(&leds_update_work, LEDS_UPDATE_INTERVAL);
 }
 
+static void connect_work_fn(struct k_work *work)
+{
+	int err = aws_iot_connect(NULL);
+	if (err) {
+		printk("<CLOUD> aws_iot_connect failed: %d\n", err);
+	}
+	// If connect fails this will trigger a reconnect
+	k_delayed_work_submit(&connect_work, RECONNECT_INTERVAL);
+}
+
 static void work_init(void)
 {
 	k_delayed_work_init(&report_state_work, report_state_work_fn);
 	k_delayed_work_init(&leds_update_work, leds_update);
 	k_delayed_work_submit(&leds_update_work, LEDS_UPDATE_INTERVAL);
+	k_delayed_work_init(&connect_work, connect_work_fn);
 }
 
 void main(void) {
@@ -264,6 +282,7 @@ void main(void) {
 	printf(" Version:                   %s\n", CONFIG_APP_VERSION);
 	printf(" AWS IoT Client ID:         %s\n", CONFIG_AWS_IOT_CLIENT_ID_STATIC);
 	printf(" AWS IoT broker hostname:   %s\n", CONFIG_AWS_IOT_BROKER_HOST_NAME);
+	printf(" Reconnect interval:        %d minutes\n", CONFIG_RECONNECT_INTERVAL_MINUTES);
 	printf(" Publish changes every:     %d minutes\n", CONFIG_PUBLISH_CHANGES_INTERVAL_MINUTES);
 	printf(" BLE Scan Interval:         %d minutes\n", CONFIG_BLE_SCAN_DURATION_MINUTES);
 	printf(" BLE Scan Pause:            %d minutes\n", CONFIG_BLE_SCAN_PAUSE_MINUTES);
@@ -288,12 +307,6 @@ void main(void) {
 
 	work_init();
 
-	err = aws_iot_init(NULL, aws_iot_event_handler);
-	if (err) {
-		printk("AWS IoT library could not be initialized, error: %d\n", err);
-		return;
-	}
-
 	err = lte_lc_init_and_connect_async(lte_handler);
 	if (err) {
 		printk("Modem could not be configured, error: %d\n", err);
@@ -308,12 +321,14 @@ void main(void) {
 	k_sem_take(&lte_connected, K_FOREVER);
 
 	date_time_update_async(NULL);
+
+	err = aws_iot_init(NULL, aws_iot_event_handler);
+	if (err) {
+		printk("AWS IoT library could not be initialized, error: %d\n", err);
+		return;
+	}
+
 	// Sleep to ensure that time has been obtained before communication with AWS IoT.
 	printf("Waiting 15 seconds before attempting to connect...\n");
-	k_sleep(K_SECONDS(15));
-	
-	err = aws_iot_connect(NULL);
-	if (err) {
-		printk("aws_iot_connect failed: %d\n", err);
-	}
+	k_delayed_work_submit(&connect_work, K_SECONDS(15));
 }

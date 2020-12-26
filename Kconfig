@@ -8,6 +8,10 @@ config PUBLISH_CHANGES_INTERVAL_MINUTES
 	int "How often to publish changed values in minutes"
 	default 5
 
+config RECONNECT_INTERVAL_MINUTES
+	int "How long to wait in minutes for a reconnect to the cloud in case the connection is lost"
+	default 5
+
 config TEMPERATURE_THRESHOLD_CENTICELSIUS
 	int "Threshold for temperature to change before reporting it in centicelsius"
 	default 1
